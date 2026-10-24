@@ -67,15 +67,6 @@ The sim and the VCU don't model torque the same way yet:
 | Filtering | LPF (τ = 0.05 s) + 2000 Nm/s slew limit | `RESPONSE_TIME=0.01` in engine.ini |
 | Regen | -30 Nm max, **disabled** (`REGEN_ENABLED 0`) | -30 Nm, always on |
 
-### Planned: torque map maker
-
-A tool where drivers build their own pedal map and get both:
-
-- the sim files for this repo, to try the map in Assetto, and
-- the `torqueMap_table[]` values for the VCU, to run the same map on the car.
-
-One map file would be the source of truth for both, so the sim and the car can't drift apart.
-
 ## Known issues
 
 - Map file names (`140nm`, `120nm`, ...) don't match the torque they produce (see table above).
