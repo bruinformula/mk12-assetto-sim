@@ -1,0 +1,30 @@
+# Vehicle model and in-game assets live on Box, never here.
+*.kn5
+*.knh
+*.acd
+*.blend
+*.dds
+*.png
+*.jpg
+*.bank
+*.zip
+skins/
+sfx/
+animations/
+ui/
+
+# Model data files that would otherwise sit next to the scripts in data/
+*/data/tyres.ini
+*/data/suspensions.ini
+*/data/aero.ini
+*/data/dampers.ini
+*/data/brakes.ini
+*/data/car.ini
+*/data/Tires/
+*/data/Aero/
+*/data/Dampers/
+*/data/Brakes/
+*/data/NEW/
+
+.DS_Store
+Thumbs.db
