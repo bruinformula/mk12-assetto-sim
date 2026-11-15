@@ -28,3 +28,6 @@ ui/
 
 .DS_Store
 Thumbs.db
+
+# spike/Makefile output
+spike/build/

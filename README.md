@@ -101,3 +101,21 @@ With VS Code and the Lua extension (LuaLS), `.luarc.json` loads it as a library,
 in `bfr_mk12/data/*.lua` get completion and type checks. To move the pin, check out a newer commit
 in the submodule and commit the change. The SDK tracks the latest CSP build, so check it against
 the CSP version the team runs.
+
+## SIL spike
+
+`spike/` checks, on a Windows PC with AC + CSP, that a separate program can drive the car
+through shared memory, before we build the software-in-the-loop VCU sim. `spike/CHECKLIST.md`
+is the hand-off for whoever runs it.
+
+- `car/spike.lua`, `car/script.lua`: spike car script. Debug readouts for tick rate, gas,
+  torque response and the program link
+- `vcu_dummy.c`: stand-in VCU program, 50 Nm past 10% pedal
+- `bridge_layout.h`: the shared-memory block both sides use
+
+```
+make -C spike test     # car script against vcu_dummy, on this machine
+make -C spike kit      # spike/build/bfr_vcu_spike/, needs mingw-w64
+```
+
+CI (`spike.yml`) runs the test and uploads the kit, Windows exe included, as a build artifact.
