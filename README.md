@@ -84,3 +84,20 @@ exists.
 
 Never commit model or asset files. `.gitignore` blocks the usual ones (`*.kn5`, `*.acd`,
 tires, aero, suspension, dampers, skins, sounds).
+
+## CSP Lua SDK (reference)
+
+`reference/acc-lua-sdk` is the [CSP Lua SDK](https://github.com/ac-custom-shaders-patch/acc-lua-sdk)
+(MIT) as a git submodule, pinned to a commit. It is for reading and editor autocomplete only:
+nothing in it is copied into the car, and AC doesn't need it. It holds the `ac.*` and car-physics
+API definitions (`ac_car_cphys.lua`), the shared-memory helper (`common/ac_extras_connectmmf.lua`)
+and the script sandbox rules (`common/secure.lua`).
+
+```
+git submodule update --init
+```
+
+With VS Code and the Lua extension (LuaLS), `.luarc.json` loads it as a library, so `ac.*` calls
+in `bfr_mk12/data/*.lua` get completion and type checks. To move the pin, check out a newer commit
+in the submodule and commit the change. The SDK tracks the latest CSP build, so check it against
+the CSP version the team runs.
