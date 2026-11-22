@@ -9,12 +9,14 @@ on:
       - "sil/**"
       - "vendor/mk12-vcu"
       - "bfr_mk12/data/brakes.lua"
+      - "bfr_mk12/data/drivetrain.ini"
       - ".github/workflows/sil.yml"
   pull_request:
     paths:
       - "sil/**"
       - "vendor/mk12-vcu"
       - "bfr_mk12/data/brakes.lua"
+      - "bfr_mk12/data/drivetrain.ini"
       - ".github/workflows/sil.yml"
   workflow_dispatch:
 

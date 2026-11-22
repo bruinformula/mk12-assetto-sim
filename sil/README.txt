@@ -11,8 +11,9 @@ over shared memory. Zero Python, git, or compiling required.
      assettocorsa\content\cars\bfr_mk12\
 2. If a `data.acd` file exists in that folder, rename it (e.g. `data.acd.bak`).
    Assetto Corsa ignores `data\` whenever `data.acd` is present.
-3. Back up your existing `data\script.lua`, then copy all files from this kit's
-   `data\` folder (`script.lua`, `vcu_bridge.lua`, `brakes.lua`) into:
+3. Back up your existing `data\script.lua` and `data\drivetrain.ini`, then copy
+   all files from this kit's `data\` folder (`script.lua`, `vcu_bridge.lua`,
+   `brakes.lua`, `drivetrain.ini`) into:
      assettocorsa\content\cars\bfr_mk12\data\
 
 2. Drive with the default `base` profile

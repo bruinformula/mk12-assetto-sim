@@ -90,7 +90,7 @@ windows: build/bfr_vcu.exe
 kit: build/bfr_vcu.exe
 	rm -rf build/bfr_vcu_kit
 	mkdir -p build/bfr_vcu_kit/data
-	cp ../bfr_mk12/data/brakes.lua build/bfr_vcu_kit/data/
+	cp ../bfr_mk12/data/brakes.lua ../bfr_mk12/data/drivetrain.ini build/bfr_vcu_kit/data/
 	cp car/script.lua car/vcu_bridge.lua build/bfr_vcu_kit/data/
 	cp build/bfr_vcu.exe README.txt build/bfr_vcu_kit/
 	cp $(VCU_DIR)/profiles/base.yaml build/bfr_vcu_kit/
