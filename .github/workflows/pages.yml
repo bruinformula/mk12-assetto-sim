@@ -4,7 +4,7 @@ name: pages
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "feature/sil-vcu"]
     paths:
       - "sil/build_pages.py"
       - "vendor/mk12-vcu"
