@@ -29,5 +29,6 @@ ui/
 .DS_Store
 Thumbs.db
 
-# spike/Makefile output
+# spike/Makefile and sil/Makefile output
 spike/build/
+sil/build/

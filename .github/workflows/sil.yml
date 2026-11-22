@@ -1,0 +1,44 @@
+# MK12 VCU SIL CI: verifies real VCU C firmware against reference outputs and
+# LuaJIT shared-memory tests, cross-compiles static bfr_vcu.exe for Windows,
+# and uploads bfr_vcu_kit as a downloadable workflow artifact.
+name: sil
+
+on:
+  push:
+    paths:
+      - "sil/**"
+      - "vendor/mk12-vcu"
+      - "bfr_mk12/data/brakes.lua"
+      - ".github/workflows/sil.yml"
+  pull_request:
+    paths:
+      - "sil/**"
+      - "vendor/mk12-vcu"
+      - "bfr_mk12/data/brakes.lua"
+      - ".github/workflows/sil.yml"
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install LuaJIT and mingw-w64
+        run: sudo apt-get update -q && sudo apt-get install -y -q luajit gcc-mingw-w64-x86-64
+
+      - name: Build native bfr_vcu and run SIL test suite
+        run: make -C sil test
+
+      - name: Cross-compile Windows bfr_vcu.exe and package kit
+        run: make -C sil kit
+
+      - name: Verify Profile Studio Pages build
+        run: python3 sil/build_pages.py sil/build/pages
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bfr_vcu_kit
+          path: sil/build/bfr_vcu_kit/

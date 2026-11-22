@@ -102,20 +102,43 @@ in `bfr_mk12/data/*.lua` get completion and type checks. To move the pin, check 
 in the submodule and commit the change. The SDK tracks the latest CSP build, so check it against
 the CSP version the team runs.
 
-## SIL spike
+## SIL VCU & Profile Studio
 
-`spike/` checks, on a Windows PC with AC + CSP, that a separate program can drive the car
-through shared memory, before we build the software-in-the-loop VCU sim. `spike/CHECKLIST.md`
-is the hand-off for whoever runs it.
+`sil/` compiles the real HAL-free MK12 VCU firmware (`vendor/mk12-vcu`, submodule tracking
+`bruinformula/mk12-vcu`'s `assetto` branch) into a Windows executable (`bfr_vcu.exe`) that
+talks to Assetto Corsa over shared memory at 333 Hz — running the real 1 kHz torque map,
+LPF/slew filter, EV.3.3.1 power limit, and Simulink traction control with 100 Hz / 0.1 Nm
+inverter quantization.
+
+- `sil/bridge_layout.h`: shared-memory bridge v2 (pedals, RPM, gear, 4 wheel speeds, ground
+  speed, IMU → VCU; torque command, driver request, TC telemetry, slip ratio, profile hash ← VCU)
+- `sil/bfr_vcu.c`, `sil/profile_loader.c`: real VCU harness with runtime YAML profile loading
+  (supports drag-and-drop `.yaml`, `--profile`, `--no-tc`, `--sleep`)
+- `sil/car/vcu_bridge.lua`, `sil/car/script.lua`: thin CSP car script with fail-closed 0 Nm
+  fallback if `bfr_vcu.exe` isn't running or disconnects (>50 ms)
+- `sil/build_pages.py`: builds the [MK12 Profile Studio](https://bruinformula.github.io/mk12-assetto-sim/)
+  synced to `vendor/mk12-vcu/profiles/base.yaml` for GitHub Pages (`.github/workflows/pages.yml`)
+
+```
+make -C sil test       # reference CSV parity + LuaJIT <-> C shared-memory SIL tests
+make -C sil kit        # sil/build/bfr_vcu_kit/ (Windows static exe, needs mingw-w64)
+git submodule update --remote vendor/mk12-vcu   # pull newer VCU firmware from assetto
+```
+
+CI (`.github/workflows/sil.yml`) runs `make -C sil test`, cross-compiles `bfr_vcu.exe`, and
+uploads `bfr_vcu_kit` as a downloadable artifact.
+
+## SIL spike (historical)
+
+`spike/` validated the shared-memory bridge on Windows AC + CSP (passed at 333 Hz / 1-tick
+lag; see [spike/RESULTS.md](spike/RESULTS.md)). Kept as historical reference.
 
 - `car/spike.lua`, `car/script.lua`: spike car script. Debug readouts for tick rate, gas,
   torque response and the program link
 - `vcu_dummy.c`: stand-in VCU program, 50 Nm past 10% pedal
-- `bridge_layout.h`: the shared-memory block both sides use
+- `bridge_layout.h`: the v1 shared-memory block
 
 ```
 make -C spike test     # car script against vcu_dummy, on this machine
 make -C spike kit      # spike/build/bfr_vcu_spike/, needs mingw-w64
 ```
-
-CI (`spike.yml`) runs the test and uploads the kit, Windows exe included, as a build artifact.
