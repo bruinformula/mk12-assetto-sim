@@ -16,7 +16,7 @@
 
 typedef struct {
   char     name[SIM_PROFILE_NAME_MAX];
-  float    max_nm;                          /* MAX_TORQUE [20, 150], integer */
+  float    max_nm;                          /* MAX_TORQUE [20, 220], integer */
   float    pedal_table[SIM_PROFILE_POINTS]; /* torqueMap_table [0, 1], monotonic, 0..1 */
   float    coast_end;                       /* REGEN_END_PERCENT [0.005, 0.1] */
   float    drive_start;                     /* APPS_INFLECTION_PERCENT [0.02, 0.2] */

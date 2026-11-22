@@ -275,8 +275,8 @@ local bad_cases = {
     yaml = "name: bad_mono\nextends: base\ntorque:\n  pedal_table: [0, 0.2, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]\n",
   },
   {
-    label = "out-of-range max_nm (200 > 150)",
-    yaml = "name: bad_max\nextends: base\ntorque:\n  max_nm: 200\n",
+    label = "out-of-range max_nm (221 > 220)",
+    yaml = "name: bad_max\nextends: base\ntorque:\n  max_nm: 221\n",
   },
   {
     label = "coast_end >= drive_start",

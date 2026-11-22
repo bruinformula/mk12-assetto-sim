@@ -122,8 +122,8 @@ bool simProfile_validate(const SimProfile *p, char *err, size_t err_cap) {
     return false;
   }
   if (!isfinite(p->max_nm) || floorf(p->max_nm) != p->max_nm ||
-      p->max_nm < 20.0f || p->max_nm > 150.0f) {
-    set_err(err, err_cap, "torque.max_nm = %.4g must be an integer in [20, 150]", p->max_nm);
+      p->max_nm < 20.0f || p->max_nm > 220.0f) {
+    set_err(err, err_cap, "torque.max_nm = %.4g must be an integer in [20, 220]", p->max_nm);
     return false;
   }
   for (int i = 0; i < SIM_PROFILE_POINTS; i++) {
