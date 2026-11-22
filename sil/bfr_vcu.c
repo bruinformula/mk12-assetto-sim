@@ -506,8 +506,10 @@ int main(int argc, char **argv) {
           driver_nm = filter.target;
 
           if (use_tc) {
-            float after_tc = tractionControl_apply(req_nm);
+            float after_tc = tractionControl_applyWheels(
+                req_nm, wheel_omega[0], wheel_omega[1], wheel_omega[2], wheel_omega[3]);
             tc_nm = tractionControl_modelTorqueNm();
+            slip_ratio = tractionControl_slipRatio();
             tc_active = (after_tc < req_nm - 1e-4f) ? 1u : 0u;
             req_nm = after_tc;
           } else {

@@ -6,11 +6,12 @@
 MINGW   ?= x86_64-w64-mingw32-gcc
 VCU_DIR ?= ../vendor/mk12-vcu
 
-CFLAGS     = -O2 -Wall -Wextra -std=c11
+CFLAGS     = -O2 -Wall -Wextra -std=c11 -DTC_ENABLED=1
 VCU_INCS   = -I$(VCU_DIR)/Core/Inc -I$(VCU_DIR)/Core/Src -I$(VCU_DIR)/Core/Src/traction_model
 VCU_TC_SRC = $(VCU_DIR)/Core/Src/traction_control.c \
              $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1.c \
-             $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1_data.c
+             $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1_data.c \
+             $(VCU_DIR)/Core/Src/traction_model/rt_nonfinite.c
 COMMON_SRC = bfr_vcu.c profile_loader.c $(VCU_TC_SRC)
 COMMON_HDR = bridge_layout.h profile_loader.h \
              $(VCU_DIR)/Core/Inc/torque_map.h \
@@ -38,7 +39,8 @@ build/traction_control.o: $(VCU_DIR)/Core/Src/traction_control.c $(VCU_DIR)/Core
 	$(CC) $(CFLAGS) $(VCU_INCS) -c -o $@ $(VCU_DIR)/Core/Src/traction_control.c
 
 TC_MODEL_HDR = $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1.h \
-               $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1_types.h
+               $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1_types.h \
+               $(VCU_DIR)/Core/Src/traction_model/rt_nonfinite.h
 
 build/Block_Diagram_1.o: $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1.c $(TC_MODEL_HDR) | build
 	$(CC) $(EC_CFLAGS) $(VCU_INCS) -c -o $@ $<
@@ -46,8 +48,11 @@ build/Block_Diagram_1.o: $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1.c $(
 build/Block_Diagram_1_data.o: $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1_data.c $(TC_MODEL_HDR) | build
 	$(CC) $(EC_CFLAGS) $(VCU_INCS) -c -o $@ $<
 
+build/rt_nonfinite.o: $(VCU_DIR)/Core/Src/traction_model/rt_nonfinite.c $(TC_MODEL_HDR) | build
+	$(CC) $(EC_CFLAGS) $(VCU_INCS) -c -o $@ $<
+
 build/bfr_vcu: build/bfr_vcu.o build/profile_loader.o build/traction_control.o \
-               build/Block_Diagram_1.o build/Block_Diagram_1_data.o
+               build/Block_Diagram_1.o build/Block_Diagram_1_data.o build/rt_nonfinite.o
 	$(CC) -o $@ $^ -lm
 
 # Windows x86_64 static cross-compile
@@ -66,13 +71,18 @@ build/win_Block_Diagram_1.o: $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1.
 build/win_Block_Diagram_1_data.o: $(VCU_DIR)/Core/Src/traction_model/Block_Diagram_1_data.c $(TC_MODEL_HDR) | build
 	$(MINGW) $(EC_CFLAGS) $(VCU_INCS) -c -o $@ $<
 
+build/win_rt_nonfinite.o: $(VCU_DIR)/Core/Src/traction_model/rt_nonfinite.c $(TC_MODEL_HDR) | build
+	$(MINGW) $(EC_CFLAGS) $(VCU_INCS) -c -o $@ $<
+
 build/bfr_vcu.exe: build/win_bfr_vcu.o build/win_profile_loader.o build/win_traction_control.o \
-                   build/win_Block_Diagram_1.o build/win_Block_Diagram_1_data.o
+                   build/win_Block_Diagram_1.o build/win_Block_Diagram_1_data.o build/win_rt_nonfinite.o
 	$(MINGW) -static -o $@ $^ -lm -lwinmm
 
 test: build/bfr_vcu
 	./build/bfr_vcu --profile $(VCU_DIR)/profiles/base.yaml \
 	                --verify-reference $(VCU_DIR)/tests/reference/outputs/base.csv
+	./build/bfr_vcu --profile $(VCU_DIR)/tests/reference/fixtures/test_spread.yaml \
+	                --verify-reference $(VCU_DIR)/tests/reference/outputs/test_spread.csv
 	luajit tests/test_sil.lua build/bfr_vcu $(VCU_DIR)
 
 windows: build/bfr_vcu.exe
