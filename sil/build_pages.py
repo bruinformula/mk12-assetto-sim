@@ -107,10 +107,7 @@ def build(out_dir: Path) -> None:
     )
 
     # 3. Inject real base.yaml defaults into BASE.
-    base_pat = re.compile(
-        r"// Sample profiles\. In the real tool these load from profiles/\*\.yaml\.\n"
-        r"const BASE = \{[\s\S]*?\};"
-    )
+    base_pat = re.compile(r"// [^\n]*\nconst BASE = \{[\s\S]*?\};")
     new_base = (
         f"// Injected from vendor/mk12-vcu/profiles/base.yaml ({sha}).\n"
         f"const BASE = {json.dumps(base, separators=(',', ':'))};"
@@ -119,17 +116,20 @@ def build(out_dir: Path) -> None:
     if n_base != 1:
         raise RuntimeError(f"build_pages: expected 1 match for BASE profile injection, found {n_base}")
 
-    # 3b. Refresh cached base profile from BASE when the user has no unsaved edits to base.
+    # 3b. Refresh cached base profile from BASE and drop removed legacy sample profiles.
     old_load_cache = (
         '  if (d && d.profiles) { profiles = d.profiles; current = d.current in profiles ? d.current : current;\n'
         "    saved = d.saved || saved; }"
     )
     new_load_cache = (
-        '  if (d && d.profiles) { profiles = d.profiles; current = d.current in profiles ? d.current : current;\n'
-        "    saved = d.saved || saved;\n"
+        '  if (d && d.profiles) { profiles = d.profiles; saved = d.saved || saved;\n'
+        '    for (const legacy of ["endurance", "idan_autox"]) {\n'
+        "      if (profiles[legacy] && saved[legacy] === toYaml(profiles[legacy])) { delete profiles[legacy]; delete saved[legacy]; }\n"
+        "    }\n"
         "    if (!profiles.base || saved.base === toYaml(profiles.base)) {\n"
         "      profiles.base = structuredClone(BASE); saved.base = toYaml(profiles.base);\n"
-        "    } }"
+        "    }\n"
+        '    current = d.current in profiles ? d.current : "base"; }'
     )
     html = replace_once(html, old_load_cache, new_load_cache, "refresh unmodified base from firmware")
 

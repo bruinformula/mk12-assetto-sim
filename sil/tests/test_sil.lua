@@ -140,7 +140,7 @@ check(applied.nm ~= applied.nm and applied.gas ~= applied.gas,
 car.gear = 1
 
 -- 3. Default base profile over shared memory (with ACTIVE Simulink TC + -30 Nm regen!)
-local base_canon = '{"torque":{"max_nm":80,"pedal_table":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]},"pedal":{"coast_end":0.03,"drive_start":0.08},"regen":{"liftoff_nm":-30,"fade_lo_kph":8,"fade_hi_kph":20,"ramp_nm_s":40},"filter":{"tau_s":0.05,"slew_nm_s":2000}}'
+local base_canon = '{"torque":{"max_nm":80,"pedal_table":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]},"pedal":{"coast_end":0.045,"drive_start":0.05},"regen":{"liftoff_nm":-30,"fade_lo_kph":5,"fade_hi_kph":6,"ramp_nm_s":200},"filter":{"tau_s":0.05,"slew_nm_s":2000}}'
 local base_hash = fnv1a(base_canon)
 
 car.gas = 1.0
@@ -195,14 +195,14 @@ check(math.abs(applied.nm - 32.0) < 0.3,
 car.speedKmh = 36
 set_wheels(50.0, 50.0, 50.0, 50.0)
 
--- 50% normalized pedal on base: (0.54 - 0.08) / (1 - 0.08) = 0.5 => 40.0 Nm
-car.gas = 0.54
+-- 50% normalized pedal on base: (0.525 - 0.05) / (1 - 0.05) = 0.5 => 40.0 Nm
+car.gas = 0.525
 run(0.35)
 check(math.abs(applied.nm - 40.0) < 0.2,
       string.format("base run: 50%% normalized pedal gives 40.0 Nm (got %.2f)", applied.nm))
 
--- Coast band (between coast_end=0.03 and drive_start=0.08) => 0 Nm
-car.gas = 0.05
+-- Coast band (between coast_end=0.045 and drive_start=0.05) => 0 Nm
+car.gas = 0.047
 run(0.08)
 check(applied.nm == 0, string.format("base run: coast band gives 0 Nm (got %.2f)", applied.nm))
 
@@ -250,14 +250,14 @@ filter:
   tau_s: 0.02
   slew_nm_s: 3000
 ]])
-local custom_canon = '{"torque":{"max_nm":120,"pedal_table":[0,0.04,0.1,0.17,0.26,0.36,0.47,0.59,0.72,0.86,1]},"pedal":{"coast_end":0.03,"drive_start":0.08},"regen":{"liftoff_nm":-30,"fade_lo_kph":8,"fade_hi_kph":20,"ramp_nm_s":40},"filter":{"tau_s":0.02,"slew_nm_s":3000}}'
+local custom_canon = '{"torque":{"max_nm":120,"pedal_table":[0,0.04,0.1,0.17,0.26,0.36,0.47,0.59,0.72,0.86,1]},"pedal":{"coast_end":0.045,"drive_start":0.05},"regen":{"liftoff_nm":-30,"fade_lo_kph":5,"fade_hi_kph":6,"ramp_nm_s":200},"filter":{"tau_s":0.02,"slew_nm_s":3000}}'
 local custom_hash = fnv1a(custom_canon)
 
 car.gear = 1
 car.rpm = 2000
 car.speedKmh = 36
 set_wheels(50.0, 50.0, 70.0, 70.0) -- heavy 40% rear wheelspin: must be ignored under --no-tc!
-car.gas = 0.54 -- 50% normalized pedal => table[5]=0.36 => 120 * 0.36 = 43.2 Nm
+car.gas = 0.525 -- 50% normalized pedal => table[5]=0.36 => 120 * 0.36 = 43.2 Nm
 -- Pass custom_yaml as a POSITIONAL arg (tests Windows drag-and-drop UX) + --no-tc
 assert(os.execute(string.format("%q %q --no-tc --file %q --seconds 1.2 > /dev/null 2>&1 &",
                                 exe, custom_yaml, shm_path)))
