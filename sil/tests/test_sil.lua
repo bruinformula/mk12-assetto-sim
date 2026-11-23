@@ -139,8 +139,8 @@ check(applied.nm ~= applied.nm and applied.gas ~= applied.gas,
       "not in gear: overrides released (NaN)")
 car.gear = 1
 
--- 3. Default base profile over shared memory (with ACTIVE Simulink TC!)
-local base_canon = '{"torque":{"max_nm":80,"pedal_table":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]},"pedal":{"coast_end":0.03,"drive_start":0.08},"regen":{"liftoff_nm":-5,"fade_lo_kph":8,"fade_hi_kph":20,"ramp_nm_s":40},"filter":{"tau_s":0.05,"slew_nm_s":2000}}'
+-- 3. Default base profile over shared memory (with ACTIVE Simulink TC + -30 Nm regen!)
+local base_canon = '{"torque":{"max_nm":80,"pedal_table":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]},"pedal":{"coast_end":0.03,"drive_start":0.08},"regen":{"liftoff_nm":-30,"fade_lo_kph":8,"fade_hi_kph":20,"ramp_nm_s":40},"filter":{"tau_s":0.05,"slew_nm_s":2000}}'
 local base_hash = fnv1a(base_canon)
 
 car.gas = 1.0
@@ -149,7 +149,7 @@ car.rpm = 2000
 car.speedKmh = 36 -- 10 m/s
 set_wheels(50.0, 50.0, 50.0, 50.0) -- zero slip at 10 m/s (0.2 m effective radius)
 
-assert(os.execute(string.format("%q --file %q --seconds 2.4 > /dev/null 2>&1 &", exe, shm_path)))
+assert(os.execute(string.format("%q --file %q --seconds 3.4 > /dev/null 2>&1 &", exe, shm_path)))
 run(0.50)
 
 check(applied.debug["01 VCU link"] == "CONNECTED", "base run: CONNECTED")
@@ -201,10 +201,22 @@ run(0.35)
 check(math.abs(applied.nm - 40.0) < 0.2,
       string.format("base run: 50%% normalized pedal gives 40.0 Nm (got %.2f)", applied.nm))
 
--- Coast band (below drive_start = 0.08) => 0 Nm
+-- Coast band (between coast_end=0.03 and drive_start=0.08) => 0 Nm
 car.gas = 0.05
 run(0.08)
 check(applied.nm == 0, string.format("base run: coast band gives 0 Nm (got %.2f)", applied.nm))
+
+-- Full lift-off regen at speed (rpm=2000 => ~39 km/h > 20 km/h): ramps to -30 Nm (40 Nm/s => ~0.75 s)
+car.gas = 0.0
+car.brake = 0.0
+run(0.90)
+check(math.abs(applied.nm - (-30.0)) < 0.3,
+      string.format("base run: off-throttle regen settles to -30.0 Nm (got %.2f)", applied.nm))
+-- Brake cancels regen immediately
+car.brake = 0.2
+run(0.05)
+check(applied.nm == 0, string.format("base run: brake cancels regen to 0 Nm (got %.2f)", applied.nm))
+car.brake = 0.0
 
 -- Neutral resets TorqueFilter
 car.gas = 1.0
@@ -219,7 +231,7 @@ check(applied.nm > 0 and applied.nm < 45,
 
 -- 4. Wait for bfr_vcu to finish and verify link-loss 0 Nm fallback
 car.gas = 1.0
-run(1.25)
+run(1.30)
 check(applied.debug["01 VCU link"] == "LOST (0 Nm fallback)",
       "VCU stopped: link shows LOST (0 Nm fallback)")
 check(applied.nm == 0, "VCU stopped: applied torque drops to 0 Nm")
@@ -238,7 +250,7 @@ filter:
   tau_s: 0.02
   slew_nm_s: 3000
 ]])
-local custom_canon = '{"torque":{"max_nm":120,"pedal_table":[0,0.04,0.1,0.17,0.26,0.36,0.47,0.59,0.72,0.86,1]},"pedal":{"coast_end":0.03,"drive_start":0.08},"regen":{"liftoff_nm":-5,"fade_lo_kph":8,"fade_hi_kph":20,"ramp_nm_s":40},"filter":{"tau_s":0.02,"slew_nm_s":3000}}'
+local custom_canon = '{"torque":{"max_nm":120,"pedal_table":[0,0.04,0.1,0.17,0.26,0.36,0.47,0.59,0.72,0.86,1]},"pedal":{"coast_end":0.03,"drive_start":0.08},"regen":{"liftoff_nm":-30,"fade_lo_kph":8,"fade_hi_kph":20,"ramp_nm_s":40},"filter":{"tau_s":0.02,"slew_nm_s":3000}}'
 local custom_hash = fnv1a(custom_canon)
 
 car.gear = 1

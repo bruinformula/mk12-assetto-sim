@@ -107,19 +107,17 @@ def build(out_dir: Path) -> None:
     )
 
     # 3. Inject real base.yaml defaults into BASE.
-    old_base = (
-        "// Sample profiles. In the real tool these load from profiles/*.yaml.\n"
-        'const BASE = { name: "base",\n'
-        "  torque: { max_nm: 80, pedal_table: PRESETS.linear.slice() },\n"
-        "  pedal: { coast_end: 0.03, drive_start: 0.08 },\n"
-        "  regen: { liftoff_nm: -5, fade_lo_kph: 8, fade_hi_kph: 20, ramp_nm_s: 40 },\n"
-        "  filter: { tau_s: 0.05, slew_nm_s: 2000 } };"
+    base_pat = re.compile(
+        r"// Sample profiles\. In the real tool these load from profiles/\*\.yaml\.\n"
+        r"const BASE = \{[\s\S]*?\};"
     )
     new_base = (
         f"// Injected from vendor/mk12-vcu/profiles/base.yaml ({sha}).\n"
         f"const BASE = {json.dumps(base, separators=(',', ':'))};"
     )
-    html = replace_once(html, old_base, new_base, "BASE profile injection")
+    html, n_base = base_pat.subn(new_base, html, count=1)
+    if n_base != 1:
+        raise RuntimeError(f"build_pages: expected 1 match for BASE profile injection, found {n_base}")
 
     # 3b. Refresh cached base profile from BASE when the user has no unsaved edits to base.
     old_load_cache = (

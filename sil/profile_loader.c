@@ -95,7 +95,7 @@ void simProfile_initBase(SimProfile *p) {
   p->pedal_table[SIM_PROFILE_POINTS - 1] = 1.0f;
   p->coast_end = 0.03f;
   p->drive_start = 0.08f;
-  p->liftoff_nm = -5.0f;
+  p->liftoff_nm = -30.0f;
   p->fade_lo_kph = 8.0f;
   p->fade_hi_kph = 20.0f;
   p->ramp_nm_s = 40.0f;
