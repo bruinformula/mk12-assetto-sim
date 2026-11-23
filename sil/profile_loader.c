@@ -87,7 +87,7 @@ uint32_t simProfile_hash(const SimProfile *p) {
 void simProfile_initBase(SimProfile *p) {
   memset(p, 0, sizeof *p);
   snprintf(p->name, sizeof p->name, "%s", "base");
-  p->max_nm = 80.0f;
+  p->max_nm = 150.0f;
   for (int i = 0; i < SIM_PROFILE_POINTS; i++) {
     p->pedal_table[i] = (float)i * 0.1f;
   }

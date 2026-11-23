@@ -16,36 +16,46 @@ over shared memory. Zero Python, git, or compiling required.
    `brakes.lua`, `drivetrain.ini`) into:
      assettocorsa\content\cars\bfr_mk12\data\
 
-2. Drive with the default `base` profile
-----------------------------------------
-1. Double-click `bfr_vcu.exe`. A console window opens showing the active
-   profile name, 8-character hash, and `waiting`.
+2. Drive with the default `base` profile (150 Nm)
+-------------------------------------------------
+1. Double-click `bfr_vcu.exe` (or drag `base.yaml` onto it). A console window
+   opens showing the active profile name, 8-character hash, TC mode (`SHADOW`),
+   the CSV log path (`logs\vcu_base_*.csv`), and `waiting`.
 2. Start Assetto Corsa with the `bfr_mk12` car and put it in 1st gear.
 3. The console switches to `LINKED` and CSP's Lua Debug app shows:
      01 VCU link      CONNECTED
      02 profile hash  <matches the console>
+     06 TC status     SHADOW (ready) / SHADOW (would cut)
      09 lag ticks     1
 
    Safety note: if `bfr_vcu.exe` is not running or closes mid-session,
    `vcu_bridge.lua` holds 0 Nm in 1st gear so you never drive on the wrong
    torque map by accident.
 
-3. Drive with a custom profile (.yaml)
---------------------------------------
-1. Create or tweak a profile in the MK12 Profile Studio:
-     https://bruinformula.github.io/mk12-assetto-sim/
-2. Click "Save profile YAML" to download `<name>.yaml`.
-3. Drag and drop `<name>.yaml` directly onto `bfr_vcu.exe`
-   (or run `bfr_vcu.exe --profile path\to\name.yaml`).
-4. Verify the 8-character profile hash matches between Profile Studio,
+3. Switch profiles (`main_220nm.yaml` or custom `.yaml`)
+--------------------------------------------------------
+This kit includes two main-equivalent linear profiles (-30 Nm regen):
+  - `base.yaml`        150 Nm (default)
+  - `main_220nm.yaml`  220 Nm
+
+1. Drag and drop `main_220nm.yaml` (or any custom `.yaml` exported from
+   https://bruinformula.github.io/mk12-assetto-sim/) onto `bfr_vcu.exe`,
+   or run `bfr_vcu.exe --profile path\to\name.yaml`.
+2. Verify the 8-character profile hash matches between Profile Studio,
    the `bfr_vcu.exe` console, and AC's Lua Debug app (`02 profile hash`).
-5. To switch profiles mid-session, close `bfr_vcu.exe` and drag a different
+3. To switch profiles mid-session, close `bfr_vcu.exe` and drag a different
    `.yaml` onto it — Assetto Corsa reconnects automatically without restarting.
+4. Every run saves a 100 Hz telemetry CSV in `logs\` next to `bfr_vcu.exe`.
+   See `TEST_GUIDE.md` for the full test & log-collection checklist.
 
 4. Command-line options
 -----------------------
-  bfr_vcu.exe                        Default `base` profile, TC enabled
-  bfr_vcu.exe my_profile.yaml        Load custom profile (drag-and-drop)
+  bfr_vcu.exe                        Default `base` (150 Nm), TC in shadow mode, CSV log on
+  bfr_vcu.exe main_220nm.yaml        Load profile via drag-and-drop (TC shadow mode)
   bfr_vcu.exe --profile file.yaml    Load custom profile (explicit flag)
-  bfr_vcu.exe --no-tc                Bypass traction control for A/B testing
+  bfr_vcu.exe --tc-active            Enable live Simulink TC torque cuts
+  bfr_vcu.exe --tc-shadow            Run Simulink TC in shadow mode (default)
+  bfr_vcu.exe --no-tc                Bypass Simulink TC completely
+  bfr_vcu.exe --log path.csv         Write 100 Hz telemetry CSV to a specific path
+  bfr_vcu.exe --no-log               Disable CSV logging
   bfr_vcu.exe --sleep                Low-CPU 1 ms poll mode (slight extra lag)

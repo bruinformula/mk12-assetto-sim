@@ -27,7 +27,7 @@ local LINK_TIMEOUT = 0.05 -- s without a new VCU answer before 0 Nm fallback
 local LOG_EVERY = 5       -- s between CSP log summaries
 
 local FLAG_TC_BYPASSED = 1 -- bit 0: --no-tc passed on CLI
-local FLAG_TC_SHADOW   = 2 -- bit 1: firmware built with TC_ENABLED == 0
+local FLAG_TC_SHADOW   = 2 -- bit 1: TC running in shadow mode (telemetry only)
 
 local STATE_NAMES = {
   [0] = "IDLE",
@@ -121,7 +121,9 @@ end
 local function tcStatusText(linked)
   if not linked then return "-" end
   if bitSet(s.fault_bits, FLAG_TC_BYPASSED) then return "OFF (--no-tc)" end
-  if bitSet(s.fault_bits, FLAG_TC_SHADOW) then return "SHADOW (TC_ENABLED=0)" end
+  if bitSet(s.fault_bits, FLAG_TC_SHADOW) then
+    return s.tc_active ~= 0 and "SHADOW (would cut)" or "SHADOW (ready)"
+  end
   if s.tc_active ~= 0 then return "ACTIVE" end
   return "READY"
 end

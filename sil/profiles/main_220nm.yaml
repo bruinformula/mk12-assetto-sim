@@ -1,0 +1,8 @@
+# 220 Nm test profile matching mk12-vcu main behavior:
+# linear pedal from 5%, flat -30 Nm lift-off regen above 6 km/h (fades 6->5 km/h),
+# 50 ms LPF, 2000 Nm/s slew limit.
+name: main_220nm
+extends: base
+
+torque:
+  max_nm: 220

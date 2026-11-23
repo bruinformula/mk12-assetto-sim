@@ -92,8 +92,8 @@ kit: build/bfr_vcu.exe
 	mkdir -p build/bfr_vcu_kit/data
 	cp ../bfr_mk12/data/brakes.lua ../bfr_mk12/data/drivetrain.ini build/bfr_vcu_kit/data/
 	cp car/script.lua car/vcu_bridge.lua build/bfr_vcu_kit/data/
-	cp build/bfr_vcu.exe README.txt build/bfr_vcu_kit/
-	cp $(VCU_DIR)/profiles/base.yaml build/bfr_vcu_kit/
+	cp build/bfr_vcu.exe README.txt TEST_GUIDE.md build/bfr_vcu_kit/
+	cp $(VCU_DIR)/profiles/base.yaml profiles/main_220nm.yaml build/bfr_vcu_kit/
 	@echo "kit: sil/build/bfr_vcu_kit/"
 
 pages:

@@ -29,7 +29,7 @@
 
 /* fault_bits / status bitmask (VCU -> sim) */
 #define BRIDGE_FLAG_TC_BYPASSED (1u << 0) /* --no-tc passed on CLI */
-#define BRIDGE_FLAG_TC_SHADOW   (1u << 1) /* TC_ENABLED == 0 in firmware */
+#define BRIDGE_FLAG_TC_SHADOW   (1u << 1) /* TC running in shadow mode (telemetry only) */
 
 typedef struct {
   /* sim -> VCU (16 x 4 = 64 bytes) */

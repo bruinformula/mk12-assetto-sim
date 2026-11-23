@@ -6,12 +6,16 @@
  * SimProfile loaded from YAML (or base.yaml defaults).
  *
  * Usage:
- *   bfr_vcu.exe [profile.yaml] [--profile PATH] [--no-tc] [--sleep]
- *   bfr_vcu --file PATH [--profile PATH] [--no-tc] [--sleep] [--seconds N]
+ *   bfr_vcu.exe [profile.yaml] [--profile PATH] [--tc-active | --tc-shadow | --no-tc]
+ *               [--log PATH | --no-log] [--sleep]
+ *   bfr_vcu --file PATH [--profile PATH] [--tc-active | --tc-shadow | --no-tc]
+ *           [--log PATH | --no-log] [--sleep] [--seconds N]
  *   bfr_vcu --verify-reference CSV [--profile PATH]
  *
  * On Windows, dragging a .yaml profile file onto bfr_vcu.exe passes it as the
- * single positional argument and runs with that profile.
+ * single positional argument and runs with that profile. By default, TC runs
+ * in shadow mode (telemetry logged without cutting torque) and 100 Hz CSV
+ * telemetry is saved to logs\ next to bfr_vcu.exe.
  */
 
 /* Standard headers BEFORE #define const so libc headers are untouched. */
@@ -22,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -32,7 +37,7 @@
 #include <fcntl.h>
 #include <sched.h>
 #include <sys/mman.h>
-#include <time.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -80,12 +85,35 @@ static SimProfile g_profile;
 #define TORQUE_TX_DIVIDER  10
 #define MAX_TICK_DT_S      0.1f
 
+typedef enum {
+  TC_MODE_SHADOW = 0, /* default: run Block_Diagram_1, log tc_nm/slip, do not cut torque */
+  TC_MODE_ACTIVE = 1, /* --tc-active: apply Simulink TC torque cuts */
+  TC_MODE_OFF    = 2, /* --no-tc: skip Block_Diagram_1 completely */
+} TcMode;
+
 static volatile sig_atomic_t g_stop = 0;
 
 static void on_signal(int sig) {
   (void)sig;
   g_stop = 1;
 }
+
+#ifdef _WIN32
+static volatile LONG g_exited = 0;
+
+static BOOL WINAPI on_win_ctrl(DWORD ctrl_type) {
+  if (ctrl_type == CTRL_C_EVENT || ctrl_type == CTRL_BREAK_EVENT ||
+      ctrl_type == CTRL_CLOSE_EVENT) {
+    g_stop = 1;
+    /* Give main() a moment to flush and close the CSV log on window close. */
+    for (int i = 0; i < 50 && !g_exited; i++) {
+      Sleep(10);
+    }
+    return TRUE;
+  }
+  return FALSE;
+}
+#endif
 
 static double now_s(void) {
 #ifdef _WIN32
@@ -309,9 +337,71 @@ static int verify_reference_csv(const char *csv_path) {
 
 static void print_usage(void) {
   printf("Usage:\n");
-  printf("  bfr_vcu [profile.yaml] [--profile PATH] [--no-tc] [--sleep]\n");
-  printf("  bfr_vcu --file PATH [--profile PATH] [--no-tc] [--sleep] [--seconds N]\n");
+  printf("  bfr_vcu [profile.yaml] [--profile PATH] [--tc-active | --tc-shadow | --no-tc]\n");
+  printf("          [--log PATH | --no-log] [--sleep]\n");
+  printf("  bfr_vcu --file PATH [--profile PATH] [--tc-active | --tc-shadow | --no-tc]\n");
+  printf("          [--log PATH | --no-log] [--sleep] [--seconds N]\n");
   printf("  bfr_vcu --verify-reference CSV [--profile PATH]\n");
+}
+
+static FILE *open_csv_log(const char *explicit_path, const char *profile_name,
+                          char *resolved_path, size_t resolved_cap) {
+  if (explicit_path && explicit_path[0]) {
+    snprintf(resolved_path, resolved_cap, "%s", explicit_path);
+  } else {
+    time_t now = time(NULL);
+    struct tm *tm_now = localtime(&now);
+    char ts[32] = "00000000_000000";
+    if (tm_now) {
+      strftime(ts, sizeof ts, "%Y%m%d_%H%M%S", tm_now);
+    }
+#ifdef _WIN32
+    char exe_dir[MAX_PATH] = ".";
+    DWORD n = GetModuleFileNameA(NULL, exe_dir, (DWORD)sizeof exe_dir);
+    if (n > 0 && n < sizeof exe_dir) {
+      char *slash = strrchr(exe_dir, '\\');
+      char *fslash = strrchr(exe_dir, '/');
+      if (fslash && (!slash || fslash > slash)) slash = fslash;
+      if (slash) *slash = '\0';
+      else snprintf(exe_dir, sizeof exe_dir, ".");
+    }
+    char log_dir[MAX_PATH + 16];
+    snprintf(log_dir, sizeof log_dir, "%s\\logs", exe_dir);
+    CreateDirectoryA(log_dir, NULL);
+    snprintf(resolved_path, resolved_cap, "%s\\vcu_%s_%s.csv", log_dir, profile_name, ts);
+#else
+    (void)mkdir("logs", 0755);
+    snprintf(resolved_path, resolved_cap, "logs/vcu_%s_%s.csv", profile_name, ts);
+#endif
+  }
+
+  FILE *fp = fopen(resolved_path, "w");
+  if (!fp) {
+    perror(resolved_path);
+    resolved_path[0] = '\0';
+    return NULL;
+  }
+  fprintf(fp,
+          "time_s,vcu_ticks,profile,hash,tc_mode,gear,gas,brake,rpm,speed_kph,"
+          "w_fl,w_fr,w_rl,w_rr,driver_nm,cap_nm,tc_nm,cmd_nm,slip_ratio,tc_active\n");
+  fflush(fp);
+  return fp;
+}
+
+static void log_csv_row(FILE *fp, double elapsed_s, uint32_t vcu_ticks,
+                        const SimProfile *prof, const char *tc_tag, int32_t gear,
+                        float gas, float brake, float rpm, float speed_mps,
+                        const float w[4], float driver_nm, float cap_nm,
+                        float tc_nm, float cmd_nm, float slip_ratio,
+                        uint32_t tc_active) {
+  if (!fp) return;
+  fprintf(fp,
+          "%.3f,%u,%s,%08x,%s,%d,%.4f,%.4f,%.1f,%.2f,"
+          "%.3f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%.1f,%.4f,%u\n",
+          elapsed_s, vcu_ticks, prof->name, prof->hash, tc_tag, gear,
+          gas, brake, rpm, speed_mps * 3.6f,
+          w[0], w[1], w[2], w[3], driver_nm, cap_nm, tc_nm, cmd_nm,
+          slip_ratio, tc_active);
 }
 
 static void pause_on_windows_error(int dragged_profile) {
@@ -330,7 +420,9 @@ int main(int argc, char **argv) {
   const char *profile_path = NULL;
   const char *file_path = NULL;
   const char *verify_csv = NULL;
-  int use_tc = 1;
+  const char *log_path = NULL;
+  TcMode tc_mode = TC_MODE_SHADOW;
+  int no_log = 0;
   int sleep_ms = 0;
   int dragged_profile = 0;
   double run_for = 0.0;
@@ -341,8 +433,18 @@ int main(int argc, char **argv) {
       return 0;
     } else if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
       profile_path = argv[++i];
+    } else if (strcmp(argv[i], "--tc-active") == 0) {
+      tc_mode = TC_MODE_ACTIVE;
+    } else if (strcmp(argv[i], "--tc-shadow") == 0) {
+      tc_mode = TC_MODE_SHADOW;
     } else if (strcmp(argv[i], "--no-tc") == 0) {
-      use_tc = 0;
+      tc_mode = TC_MODE_OFF;
+    } else if (strcmp(argv[i], "--log") == 0 && i + 1 < argc) {
+      log_path = argv[++i];
+      no_log = 0;
+    } else if (strcmp(argv[i], "--no-log") == 0) {
+      no_log = 1;
+      log_path = NULL;
     } else if (strcmp(argv[i], "--sleep") == 0) {
       sleep_ms = 1;
     } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
@@ -385,12 +487,19 @@ int main(int argc, char **argv) {
     return verify_reference_csv(verify_csv);
   }
 
+#if !TC_ENABLED
+  if (tc_mode == TC_MODE_ACTIVE) {
+    fprintf(stderr, "warning: built with TC_ENABLED=0; staying in shadow mode\n");
+    tc_mode = TC_MODE_SHADOW;
+  }
+#endif
+
   signal(SIGINT, on_signal);
 #ifdef SIGTERM
   signal(SIGTERM, on_signal);
 #endif
-
 #ifdef _WIN32
+  SetConsoleCtrlHandler(on_win_ctrl, TRUE);
   if (sleep_ms) timeBeginPeriod(1);
 #endif
 
@@ -398,6 +507,7 @@ int main(int argc, char **argv) {
   if (!b) {
 #ifdef _WIN32
     if (sleep_ms) timeEndPeriod(1);
+    g_exited = 1;
 #endif
     return 1;
   }
@@ -407,23 +517,34 @@ int main(int argc, char **argv) {
   tractionControl_init();
 
   uint32_t static_flags = 0u;
-  if (!use_tc) static_flags |= BRIDGE_FLAG_TC_BYPASSED;
-#if !TC_ENABLED
-  static_flags |= BRIDGE_FLAG_TC_SHADOW;
-#endif
+  const char *tc_mode_str = "SHADOW (telemetry only)";
+  const char *tc_tag = "shadow";
+  if (tc_mode == TC_MODE_OFF) {
+    static_flags |= BRIDGE_FLAG_TC_BYPASSED;
+    tc_mode_str = "OFF (--no-tc)";
+    tc_tag = "off";
+  } else if (tc_mode == TC_MODE_SHADOW) {
+    static_flags |= BRIDGE_FLAG_TC_SHADOW;
+  } else {
+    tc_mode_str = "ACTIVE (--tc-active)";
+    tc_tag = "active";
+  }
 
-  const char *tc_mode_str = !use_tc ? "OFF (--no-tc)"
-#if TC_ENABLED
-                                    : "ON";
-#else
-                                    : "SHADOW (TC_ENABLED=0)";
-#endif
+  /* Auto-log 100 Hz CSV on live sessions (no --file), or whenever --log PATH is given. */
+  char resolved_log[512] = "";
+  FILE *log_fp = NULL;
+  if (!no_log && (log_path != NULL || file_path == NULL)) {
+    log_fp = open_csv_log(log_path, g_profile.name, resolved_log, sizeof resolved_log);
+  }
 
   printf("bfr_vcu: bridge %s v%u | %s\n",
          BRIDGE_NAME, BRIDGE_VERSION, sleep_ms ? "1 ms sleep" : "spinning");
   printf("profile: %s (hash %08x) | max %.0f Nm | regen %s | TC %s\n",
          g_profile.name, g_profile.hash, g_profile.max_nm,
          REGEN_ENABLED ? "ON" : "OFF", tc_mode_str);
+  if (log_fp) {
+    printf("csv log: %s (100 Hz)\n", resolved_log);
+  }
   printf("Start Assetto Corsa with the bfr_mk12 SIL script. Ctrl+C to stop.\n");
   fflush(stdout);
 
@@ -435,9 +556,11 @@ int main(int argc, char **argv) {
   float gas = 0.0f, brake = 0.0f, rpm = 0.0f, speed_mps = 0.0f;
   float wheel_omega[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   int32_t gear = 0;
+  int32_t prev_gear = 0;
 
   float latched_nm = 0.0f;
   float driver_nm = 0.0f;
+  float last_cap_nm = g_profile.max_nm;
   float tc_nm = 0.0f;
   float slip_ratio = 0.0f;
   uint32_t tc_active = 0u;
@@ -486,9 +609,15 @@ int main(int argc, char **argv) {
         tx_ticks = 0;
         latched_nm = 0.0f;
         driver_nm = 0.0f;
+        last_cap_nm = g_profile.max_nm;
         tc_nm = 0.0f;
         tc_active = 0u;
         vcu_state = BRIDGE_STATE_IDLE;
+        if (prev_gear == 1) {
+          log_csv_row(log_fp, now_s() - start, vcu_ticks, &g_profile, tc_tag,
+                      gear, gas, brake, rpm, speed_mps, wheel_omega,
+                      driver_nm, last_cap_nm, tc_nm, latched_nm, slip_ratio, tc_active);
+        }
       } else {
         vcu_state = BRIDGE_STATE_DRIVE;
         float clamped_dt = (in_dt == in_dt && in_dt > 0.0f) ? in_dt : 0.0f;
@@ -501,17 +630,20 @@ int main(int argc, char **argv) {
 
           float carspeed_kph = torqueMap_carspeedKph(clamp_rpm_i16(rpm));
           float cap_nm = powerLimit_capNm(rpm);
+          last_cap_nm = cap_nm;
           float req_nm = torqueMap_requestLimited(
               &filter, false, gas, brake, carspeed_kph, cap_nm, (float)VCU_DT_S);
           driver_nm = filter.target;
 
-          if (use_tc) {
+          if (tc_mode != TC_MODE_OFF) {
             float after_tc = tractionControl_applyWheels(
                 req_nm, wheel_omega[0], wheel_omega[1], wheel_omega[2], wheel_omega[3]);
             tc_nm = tractionControl_modelTorqueNm();
             slip_ratio = tractionControl_slipRatio();
             tc_active = (after_tc < req_nm - 1e-4f) ? 1u : 0u;
-            req_nm = after_tc;
+            if (tc_mode == TC_MODE_ACTIVE) {
+              req_nm = after_tc;
+            }
           } else {
             tc_nm = req_nm;
             tc_active = 0u;
@@ -521,9 +653,13 @@ int main(int argc, char **argv) {
           if (tx_ticks >= TORQUE_TX_DIVIDER) {
             tx_ticks = 0;
             latched_nm = (float)deci_nm(req_nm) * 0.1f;
+            log_csv_row(log_fp, now_s() - start, vcu_ticks, &g_profile, tc_tag,
+                        gear, gas, brake, rpm, speed_mps, wheel_omega,
+                        driver_nm, last_cap_nm, tc_nm, latched_nm, slip_ratio, tc_active);
           }
         }
       }
+      prev_gear = gear;
 
       b->torque_nm = latched_nm;
       b->vcu_state = vcu_state;
@@ -547,18 +683,24 @@ int main(int argc, char **argv) {
     double t = now_s();
     if (t - report >= 1.0) {
       const char *link = (last_answer > 0.0 && t - last_answer < 0.05) ? "LINKED " : "waiting";
-      printf("%s | %4.0f Hz | gas %.2f brk %.2f rpm %5.0f g%d | drv %5.1f cmd %5.1f Nm | slip %+.2f\n",
+      printf("%s | %4.0f Hz | gas %.2f brk %.2f rpm %5.0f g%d | drv %5.1f tc %5.1f cmd %5.1f Nm | slip %+.2f\n",
              link, answers / (t - report), gas, brake, rpm, gear,
-             driver_nm, latched_nm, slip_ratio);
+             driver_nm, tc_nm, latched_nm, slip_ratio);
       fflush(stdout);
+      if (log_fp) fflush(log_fp);
       answers = 0;
       report = t;
     }
     if (run_for > 0.0 && t - start >= run_for) break;
   }
 
+  if (log_fp) {
+    fflush(log_fp);
+    fclose(log_fp);
+  }
 #ifdef _WIN32
   if (sleep_ms) timeEndPeriod(1);
+  g_exited = 1;
 #endif
   return 0;
 }

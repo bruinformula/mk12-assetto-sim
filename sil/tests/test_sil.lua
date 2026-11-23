@@ -4,12 +4,14 @@
 -- shared memory file, with ac.* stubbed. Checks:
 --   1. Bridge v2 layout size (104 bytes, matching sil/bridge_layout.h)
 --   2. Fail-closed 0 Nm fallback when bfr_vcu is not running, and NaN release in N/R
---   3. Default base profile torque mapping, LPF ramp, 0.1 Nm quantization, gear reset,
---      wheel-speed slip telemetry, and FNV-1a profile hash
+--   3. Default base profile (150 Nm, TC shadow mode default, -30 Nm regen):
+--      torque mapping, LPF/slew ramp, 0.1 Nm quantization, shadow TC telemetry
+--      without torque cuts, regen & brake cancel, gear reset, FNV-1a hash, CSV log
 --   4. Link-loss detection and 0 Nm fallback when bfr_vcu exits
---   5. Custom YAML loading (positional drag-and-drop arg), power limit cap at high RPM
---   6. Invalid YAML rejection (non-monotonic table, out-of-range torque, bad bands, unknown key)
---   7. --no-tc flag and TC shadow-mode status reporting
+--   5. main_220nm.yaml (positional drag-and-drop arg) + --tc-active live cuts
+--      (slip ratio, full cut, standing launch) + EV.3.3.1 power limit at 6000 rpm
+--   6. Custom YAML + --no-tc bypass
+--   7. Invalid YAML rejection (non-monotonic table, out-of-range torque, bad bands, unknown key)
 --
 -- Usage (from sil/):
 --   luajit tests/test_sil.lua build/bfr_vcu ../vendor/mk12-vcu
@@ -139,9 +141,11 @@ check(applied.nm ~= applied.nm and applied.gas ~= applied.gas,
       "not in gear: overrides released (NaN)")
 car.gear = 1
 
--- 3. Default base profile over shared memory (with ACTIVE Simulink TC + -30 Nm regen!)
-local base_canon = '{"torque":{"max_nm":80,"pedal_table":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]},"pedal":{"coast_end":0.045,"drive_start":0.05},"regen":{"liftoff_nm":-30,"fade_lo_kph":5,"fade_hi_kph":6,"ramp_nm_s":200},"filter":{"tau_s":0.05,"slew_nm_s":2000}}'
+-- 3. Default base profile (150 Nm) over shared memory: TC SHADOW mode by default + CSV log
+local base_canon = '{"torque":{"max_nm":150,"pedal_table":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]},"pedal":{"coast_end":0.045,"drive_start":0.05},"regen":{"liftoff_nm":-30,"fade_lo_kph":5,"fade_hi_kph":6,"ramp_nm_s":200},"filter":{"tau_s":0.05,"slew_nm_s":2000}}'
 local base_hash = fnv1a(base_canon)
+local csv_log = "build/test_sil_log.csv"
+os.remove(csv_log)
 
 car.gas = 1.0
 car.brake = 0
@@ -149,67 +153,58 @@ car.rpm = 2000
 car.speedKmh = 36 -- 10 m/s
 set_wheels(50.0, 50.0, 50.0, 50.0) -- zero slip at 10 m/s (0.2 m effective radius)
 
-assert(os.execute(string.format("%q --file %q --seconds 3.4 > /dev/null 2>&1 &", exe, shm_path)))
-run(0.50)
+assert(os.execute(string.format("%q --file %q --log %q --seconds 2.8 > /dev/null 2>&1 &",
+                                exe, shm_path, csv_log)))
+run(0.45)
 
 check(applied.debug["01 VCU link"] == "CONNECTED", "base run: CONNECTED")
 check(applied.debug["02 profile hash"] == base_hash,
       "base run: profile hash " .. tostring(applied.debug["02 profile hash"]) .. " matches FNV-1a (" .. base_hash .. ")")
-check(applied.debug["06 TC status"] == "READY",
-      "base run: TC status is READY with zero wheel slip (got " .. tostring(applied.debug["06 TC status"]) .. ")")
+check(applied.debug["06 TC status"] == "SHADOW (ready)",
+      "base run: TC defaults to SHADOW (ready) with zero wheel slip (got " .. tostring(applied.debug["06 TC status"]) .. ")")
 check(applied.debug["08 VCU state"] == "DRIVE", "base run: VCU state is DRIVE")
 local lag = applied.debug["09 lag ticks"]
 check(type(lag) == "number" and lag <= 4, "base run: answer lag " .. tostring(lag) .. " ticks (<= 4)")
-check(math.abs(applied.nm - 80.0) < 0.2,
-      string.format("base run: full throttle settles to 80 Nm with no slip (got %.2f)", applied.nm))
+check(math.abs(applied.nm - 150.0) < 0.3,
+      string.format("base run: full throttle settles to 150 Nm (got %.2f)", applied.nm))
 check(math.abs(applied.nm * 10 - math.floor(applied.nm * 10 + 0.5)) < 1e-4,
       string.format("base run: torque is 0.1 Nm quantized (got %.4f)", applied.nm))
-check(applied.debug["04 driver req Nm"] == "80.0", "base run: driver req telemetry is 80.0 Nm")
+check(applied.debug["04 driver req Nm"] == "150.0", "base run: driver req telemetry is 150.0 Nm")
 
--- 3b. Active Simulink TC: 20% rear wheelspin (50 rad/s front, 60 rad/s rear => SR = +0.200)
--- Target SR = 0.136, P = -5 => u = 0.32 => TC cuts 80 Nm to (1 - 0.32) * 80 = 54.4 Nm!
+-- 3b. Shadow TC telemetry: 20% rear wheelspin (50 rad/s front, 60 rad/s rear => SR = +0.200)
+-- Target SR = 0.136, P = -5 => u = 0.32 => model outputs (1 - 0.32) * 150 = 102.0 Nm,
+-- while applied torque stays full 150.0 Nm in shadow mode!
 set_wheels(50.0, 50.0, 60.0, 60.0)
 run(0.08)
-check(applied.debug["06 TC status"] == "ACTIVE",
-      "active TC: 20% rear wheelspin triggers ACTIVE status (got " .. tostring(applied.debug["06 TC status"]) .. ")")
+check(applied.debug["06 TC status"] == "SHADOW (would cut)",
+      "shadow TC: 20% rear wheelspin reports SHADOW (would cut) (got " .. tostring(applied.debug["06 TC status"]) .. ")")
 local slip_val = tonumber(applied.debug["07 rear slip ratio"])
 check(slip_val ~= nil and math.abs(slip_val - 0.200) < 0.01,
-      "active TC: rear slip ratio telemetry is +0.200 (got " .. tostring(applied.debug["07 rear slip ratio"]) .. ")")
-check(math.abs(applied.nm - 54.4) < 0.3,
-      string.format("active TC: 20%% slip cuts 80 Nm -> ~54.4 Nm (got %.2f)", applied.nm))
-
--- Heavy wheelspin (40% slip: 70 rad/s rear) => full cut to 0 Nm
-set_wheels(50.0, 50.0, 70.0, 70.0)
-run(0.08)
-check(applied.nm == 0,
-      string.format("active TC: 40%% slip cuts torque to 0 Nm (got %.2f)", applied.nm))
-
--- Standing launch (0 rad/s front, 8 rad/s rear => slip speed 1.6 m/s => u=0.6 => 32.0 Nm)
-car.speedKmh = 0
-set_wheels(0.0, 0.0, 8.0, 8.0)
-run(0.08)
-check(math.abs(applied.nm - 32.0) < 0.3,
-      string.format("active TC: standing launch slip-speed mode cuts 80 Nm -> ~32.0 Nm (got %.2f)", applied.nm))
+      "shadow TC: rear slip ratio telemetry is +0.200 (got " .. tostring(applied.debug["07 rear slip ratio"]) .. ")")
+local tc_model_val = tonumber(applied.debug["05 TC model Nm"])
+check(tc_model_val ~= nil and math.abs(tc_model_val - 102.0) < 0.5,
+      "shadow TC: TC model telemetry predicts ~102.0 Nm (got " .. tostring(applied.debug["05 TC model Nm"]) .. ")")
+check(math.abs(applied.nm - 150.0) < 0.3,
+      string.format("shadow TC: applied torque remains unmodified at 150 Nm (got %.2f)", applied.nm))
 
 -- Back to zero slip rolling for remaining pedal checks
-car.speedKmh = 36
 set_wheels(50.0, 50.0, 50.0, 50.0)
 
--- 50% normalized pedal on base: (0.525 - 0.05) / (1 - 0.05) = 0.5 => 40.0 Nm
+-- 50% normalized pedal on base (150 Nm): (0.525 - 0.05) / (1 - 0.05) = 0.5 => 75.0 Nm
 car.gas = 0.525
 run(0.35)
-check(math.abs(applied.nm - 40.0) < 0.2,
-      string.format("base run: 50%% normalized pedal gives 40.0 Nm (got %.2f)", applied.nm))
+check(math.abs(applied.nm - 75.0) < 0.3,
+      string.format("base run: 50%% normalized pedal gives 75.0 Nm (got %.2f)", applied.nm))
 
 -- Coast band (between coast_end=0.045 and drive_start=0.05) => 0 Nm
 car.gas = 0.047
 run(0.08)
 check(applied.nm == 0, string.format("base run: coast band gives 0 Nm (got %.2f)", applied.nm))
 
--- Full lift-off regen at speed (rpm=2000 => ~39 km/h > 20 km/h): ramps to -30 Nm (40 Nm/s => ~0.75 s)
+-- Full lift-off regen at speed (rpm=2000 => ~39 km/h > 6 km/h): ramps to -30 Nm (200 Nm/s + 50 ms LPF)
 car.gas = 0.0
 car.brake = 0.0
-run(0.90)
+run(0.45)
 check(math.abs(applied.nm - (-30.0)) < 0.3,
       string.format("base run: off-throttle regen settles to -30.0 Nm (got %.2f)", applied.nm))
 -- Brake cancels regen immediately
@@ -224,19 +219,83 @@ car.gear = 0
 run(0.05)
 check(applied.debug["08 VCU state"] == "IDLE", "neutral: VCU state is IDLE")
 car.gear = 1
--- After 25 ms back in 1st gear with tau=50ms, LPF should be well below 80 Nm (~26 Nm)
+-- After 25 ms back in 1st gear with 2000 Nm/s slew, torque must still be ramping (<= 55 Nm)
 run(0.025)
-check(applied.nm > 0 and applied.nm < 45,
+check(applied.nm > 0 and applied.nm < 65,
       string.format("re-enter drive: filter reset confirmed, ramps from 0 (got %.1f Nm at 25 ms)", applied.nm))
 
--- 4. Wait for bfr_vcu to finish and verify link-loss 0 Nm fallback
+-- 4. Wait for bfr_vcu to finish and verify link-loss 0 Nm fallback + CSV log contents
 car.gas = 1.0
-run(1.30)
+run(1.50)
 check(applied.debug["01 VCU link"] == "LOST (0 Nm fallback)",
       "VCU stopped: link shows LOST (0 Nm fallback)")
 check(applied.nm == 0, "VCU stopped: applied torque drops to 0 Nm")
 
--- 5. Custom YAML profile via positional drag-and-drop argument + power limit check
+local lf = io.open(csv_log, "r")
+local csv_text = lf and lf:read("*a") or ""
+if lf then lf:close() end
+local csv_lines = 0
+for _ in csv_text:gmatch("[^\n]+") do csv_lines = csv_lines + 1 end
+check(csv_text:find("^time_s,vcu_ticks,profile,hash,tc_mode,gear,gas,brake,rpm,speed_kph,w_fl,w_fr,w_rl,w_rr,driver_nm,cap_nm,tc_nm,cmd_nm,slip_ratio,tc_active\n") ~= nil,
+      "CSV log: valid 20-column header written")
+check(csv_lines > 100 and csv_text:find(",base," .. base_hash .. ",shadow,") ~= nil and csv_text:find(",1\n") ~= nil,
+      string.format("CSV log: recorded %d rows including shadow-TC cut flags", csv_lines))
+os.remove(csv_log)
+
+-- 5. Bundled main_220nm.yaml (positional drag-and-drop arg) + --tc-active live cuts + power limit
+local p220_canon = '{"torque":{"max_nm":220,"pedal_table":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]},"pedal":{"coast_end":0.045,"drive_start":0.05},"regen":{"liftoff_nm":-30,"fade_lo_kph":5,"fade_hi_kph":6,"ramp_nm_s":200},"filter":{"tau_s":0.05,"slew_nm_s":2000}}'
+local p220_hash = fnv1a(p220_canon)
+
+car.gear = 1
+car.gas = 1.0
+car.brake = 0
+car.rpm = 2000
+car.speedKmh = 36
+set_wheels(50.0, 50.0, 50.0, 50.0)
+assert(os.execute(string.format("%q %q --tc-active --file %q --seconds 1.6 > /dev/null 2>&1 &",
+                                exe, "profiles/main_220nm.yaml", shm_path)))
+run(0.45)
+
+check(applied.debug["01 VCU link"] == "CONNECTED", "main_220nm (--tc-active): CONNECTED (positional YAML arg)")
+check(applied.debug["02 profile hash"] == p220_hash and p220_hash ~= base_hash,
+      "main_220nm: profile hash " .. tostring(applied.debug["02 profile hash"]) .. " matches expected (" .. p220_hash .. ")")
+check(applied.debug["06 TC status"] == "READY",
+      "main_220nm (--tc-active): TC status is READY with zero slip (got " .. tostring(applied.debug["06 TC status"]) .. ")")
+check(math.abs(applied.nm - 220.0) < 0.4,
+      string.format("main_220nm: full throttle settles to 220 Nm with no slip (got %.2f)", applied.nm))
+
+-- Active TC: 20% rear wheelspin => (1 - 0.32) * 220 = 149.6 Nm
+set_wheels(50.0, 50.0, 60.0, 60.0)
+run(0.08)
+check(applied.debug["06 TC status"] == "ACTIVE",
+      "active TC: 20% rear wheelspin triggers ACTIVE status (got " .. tostring(applied.debug["06 TC status"]) .. ")")
+check(math.abs(applied.nm - 149.6) < 0.5,
+      string.format("active TC: 20%% slip cuts 220 Nm -> ~149.6 Nm (got %.2f)", applied.nm))
+
+-- Heavy wheelspin (40% slip: 70 rad/s rear) => full cut to 0 Nm
+set_wheels(50.0, 50.0, 70.0, 70.0)
+run(0.08)
+check(applied.nm == 0,
+      string.format("active TC: 40%% slip cuts torque to 0 Nm (got %.2f)", applied.nm))
+
+-- Standing launch (0 rad/s front, 8 rad/s rear => slip speed 1.6 m/s => u=0.6 => 88.0 Nm)
+car.speedKmh = 0
+set_wheels(0.0, 0.0, 8.0, 8.0)
+run(0.08)
+check(math.abs(applied.nm - 88.0) < 0.5,
+      string.format("active TC: standing launch slip-speed mode cuts 220 Nm -> ~88.0 Nm (got %.2f)", applied.nm))
+
+-- Full throttle at 6000 rpm with zero slip: EV.3.3.1 power cap = 75000 * 0.85 / (6000 * 2*pi/60) = 101.46 -> 101.4 Nm
+car.speedKmh = 108
+set_wheels(150.0, 150.0, 150.0, 150.0)
+car.rpm = 6000
+run(0.35)
+check(math.abs(applied.nm - 101.4) < 0.3,
+      string.format("main_220nm: EV.3.3.1 power cap limits 220 Nm to ~101.4 Nm at 6000 rpm (got %.2f)", applied.nm))
+
+run(0.65) -- let second VCU process finish cleanly
+
+-- 6. Custom YAML profile + --no-tc bypass
 local custom_yaml = "build/test_custom.yaml"
 write_file(custom_yaml, [[
 name: tyler_endurance
@@ -258,27 +317,18 @@ car.rpm = 2000
 car.speedKmh = 36
 set_wheels(50.0, 50.0, 70.0, 70.0) -- heavy 40% rear wheelspin: must be ignored under --no-tc!
 car.gas = 0.525 -- 50% normalized pedal => table[5]=0.36 => 120 * 0.36 = 43.2 Nm
--- Pass custom_yaml as a POSITIONAL arg (tests Windows drag-and-drop UX) + --no-tc
-assert(os.execute(string.format("%q %q --no-tc --file %q --seconds 1.2 > /dev/null 2>&1 &",
+assert(os.execute(string.format("%q %q --no-tc --file %q --seconds 0.8 > /dev/null 2>&1 &",
                                 exe, custom_yaml, shm_path)))
 run(0.35)
 
-check(applied.debug["01 VCU link"] == "CONNECTED", "custom profile: CONNECTED (positional YAML arg)")
+check(applied.debug["01 VCU link"] == "CONNECTED", "custom profile (--no-tc): CONNECTED")
 check(applied.debug["02 profile hash"] == custom_hash and custom_hash ~= base_hash,
       "custom profile: hash " .. tostring(applied.debug["02 profile hash"]) .. " matches expected (" .. custom_hash .. ")")
 check(applied.debug["06 TC status"] == "OFF (--no-tc)", "custom profile: --no-tc reported in TC status")
 check(math.abs(applied.nm - 43.2) < 0.2,
       string.format("custom profile (--no-tc): passes full 43.2 Nm despite 40%% wheelspin (got %.2f)", applied.nm))
 
--- Full throttle at 6000 rpm: EV.3.3.1 power cap = 75000 * 0.85 / (6000 * 2*pi/60) = 101.46 Nm -> 101.4 Nm
-car.gas = 1.0
-car.rpm = 6000
-run(0.35)
-check(math.abs(applied.nm - 101.4) < 0.3,
-      string.format("custom profile: EV.3.3.1 power cap limits 120 Nm to ~101.4 Nm at 6000 rpm (got %.2f)", applied.nm))
-
--- Let the second VCU process finish cleanly before cleanup.
-run(0.6)
+run(0.55) -- let third VCU process finish cleanly
 
 -- 6. Invalid YAML rejection tests (must exit non-zero)
 local bad_cases = {
