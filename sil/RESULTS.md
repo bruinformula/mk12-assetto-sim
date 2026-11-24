@@ -37,12 +37,14 @@ telemetry), the CSP log, screenshots, and a custom Profile Studio YAML export we
 
 ### Telemetry Runs (100 Hz CSV)
 
+Raw CSVs and [custom_shaders_patch.log](results/v0.1.0/logs/custom_shaders_patch.log) are archived in [`results/v0.1.0/logs/`](results/v0.1.0/logs/).
+
 | Log file | Profile (hash) | TC mode | Sim time | Rows | Max speed / RPM | Highlights |
 |---|---|---|---:|---:|---|---|
-| `vcu_base_20261123_163029.csv` | `base` (`1c599911`) | `shadow` | 240.6 s | 24,061 | 107.2 km/h / 5544 | 150 Nm pull, `-29.9 Nm` regen, `6→5 km/h` fade, 104 brake-cancel rows, smoky burnouts (`slip` up to `60.0`) |
-| `vcu_main_220nm_20261123_163651.csv` | `main_220nm` (`2eabfaa7`) | `shadow` | 161.0 s | 16,105 | 107.2 km/h / 5518 | Mid-session swap from `base`, 220 Nm pull, power cap taper from 2770 rpm, 120 brake-cancel rows |
-| `vcu_main_220nm_20261123_164051.csv` | `main_220nm` (`2eabfaa7`) | `active` | 97.2 s | 9,717 | 93.4 km/h / 4950 | Live TC launches (`0–50` in `2.04 s`, `0–70` in `2.73 s`), smooth cornering cuts, 144 brake-cancel rows |
-| `vcu_main_220nm_20261123_164410.csv` | `main_220nm` (`2eabfaa7`) | `active` | 40.6 s | 4,056 | 75.9 km/h / 4556 | Standing WOT launch (`0–50` in `2.05 s`, `0–70` in `2.76 s`), steady `0.14–0.24` slip tracking into corner |
+| [vcu_base_20261123_163029.csv](results/v0.1.0/logs/vcu_base_20261123_163029.csv) | `base` (`1c599911`) | `shadow` | 240.6 s | 24,061 | 107.2 km/h / 5544 | 150 Nm pull, `-29.9 Nm` regen, `6→5 km/h` fade, 104 brake-cancel rows, smoky burnouts (`slip` up to `60.0`) |
+| [vcu_main_220nm_20261123_163651.csv](results/v0.1.0/logs/vcu_main_220nm_20261123_163651.csv) | `main_220nm` (`2eabfaa7`) | `shadow` | 161.0 s | 16,105 | 107.2 km/h / 5518 | Mid-session swap from `base`, 220 Nm pull, power cap taper from 2770 rpm, 120 brake-cancel rows |
+| [vcu_main_220nm_20261123_164051.csv](results/v0.1.0/logs/vcu_main_220nm_20261123_164051.csv) | `main_220nm` (`2eabfaa7`) | `active` | 97.2 s | 9,717 | 93.4 km/h / 4950 | Live TC launches (`0–50` in `2.04 s`, `0–70` in `2.73 s`), smooth cornering cuts, 144 brake-cancel rows |
+| [vcu_main_220nm_20261123_164410.csv](results/v0.1.0/logs/vcu_main_220nm_20261123_164410.csv) | `main_220nm` (`2eabfaa7`) | `active` | 40.6 s | 4,056 | 75.9 km/h / 4556 | Standing WOT launch (`0–50` in `2.05 s`, `0–70` in `2.76 s`), steady `0.14–0.24` slip tracking into corner |
 
 *(Three additional 0-row CSVs were created while `bfr_vcu.exe` was started/switched with the car in Neutral.)*
 
