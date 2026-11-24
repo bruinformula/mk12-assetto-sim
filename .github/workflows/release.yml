@@ -1,0 +1,68 @@
+# Publishes a versioned bfr_vcu_kit-vX.Y.Z.zip GitHub Release whenever a v* tag is pushed.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-kit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Verify tag matches sil/VERSION
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="$(tr -d '[:space:]' < sil/VERSION)"
+          if [ "$TAG" != "v$VER" ]; then
+            echo "Tag $TAG does not match sil/VERSION ($VER)" >&2
+            exit 1
+          fi
+
+      - name: Install LuaJIT and mingw-w64
+        run: sudo apt-get update -q && sudo apt-get install -y -q luajit gcc-mingw-w64-x86-64 zip
+
+      - name: Build native bfr_vcu and run SIL test suite
+        run: make -C sil test
+
+      - name: Cross-compile Windows bfr_vcu.exe and package versioned kit
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          make -C sil kit SIL_VERSION="$VER"
+          (cd sil/build && zip -r "bfr_vcu_kit-${TAG}.zip" bfr_vcu_kit)
+
+      - name: Verify Profile Studio Pages build
+        run: python3 sil/build_pages.py sil/build/pages
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          FW_REV="$(git -C vendor/mk12-vcu rev-parse --short HEAD)"
+          ZIP="sil/build/bfr_vcu_kit-${TAG}.zip"
+          NOTES=$(cat <<EOF
+          MK12 VCU Software-in-the-Loop (SIL) Kit **${TAG}** for Assetto Corsa.
+
+          - Embedded \`bruinformula/mk12-vcu\` firmware: \`${FW_REV}\`
+          - Bundled profiles: \`base.yaml\` (150 Nm), \`main_220nm.yaml\` (220 Nm)
+          - Install & test steps: see \`README.txt\` and \`TEST_GUIDE.md\` inside the zip
+          EOF
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "MK12 SIL VCU Kit ${TAG}" \
+              --notes "$NOTES" \
+              --generate-notes
+          fi

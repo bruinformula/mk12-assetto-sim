@@ -3,9 +3,12 @@
 #   make windows   build/bfr_vcu.exe (needs mingw-w64: brew install mingw-w64)
 #   make kit       build/bfr_vcu_kit/, ready to hand off to Windows AC + CSP
 
-MINGW   ?= x86_64-w64-mingw32-gcc
-VCU_DIR ?= ../vendor/mk12-vcu
+MINGW       ?= x86_64-w64-mingw32-gcc
+VCU_DIR     ?= ../vendor/mk12-vcu
+SIL_VERSION ?= $(shell cat VERSION 2>/dev/null || echo 0.0.0-dev)
+VCU_REV     ?= $(shell git -C $(VCU_DIR) rev-parse --short HEAD 2>/dev/null || echo unknown)
 
+VERSION_DEFS = -DSIL_VERSION='"$(SIL_VERSION)"' -DVCU_FW_REV='"$(VCU_REV)"'
 CFLAGS     = -O2 -Wall -Wextra -std=c11 -DTC_ENABLED=1
 VCU_INCS   = -I$(VCU_DIR)/Core/Inc -I$(VCU_DIR)/Core/Src -I$(VCU_DIR)/Core/Src/traction_model
 VCU_TC_SRC = $(VCU_DIR)/Core/Src/traction_control.c \
@@ -32,8 +35,8 @@ build:
 build/profile_loader.o: profile_loader.c profile_loader.h | build
 	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -c -o $@ profile_loader.c
 
-build/bfr_vcu.o: bfr_vcu.c $(COMMON_HDR) | build
-	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE $(VCU_INCS) -c -o $@ bfr_vcu.c
+build/bfr_vcu.o: bfr_vcu.c $(COMMON_HDR) VERSION | build
+	$(CC) $(CFLAGS) $(VERSION_DEFS) -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE $(VCU_INCS) -c -o $@ bfr_vcu.c
 
 build/traction_control.o: $(VCU_DIR)/Core/Src/traction_control.c $(VCU_DIR)/Core/Inc/traction_control.h | build
 	$(CC) $(CFLAGS) $(VCU_INCS) -c -o $@ $(VCU_DIR)/Core/Src/traction_control.c
@@ -59,8 +62,8 @@ build/bfr_vcu: build/bfr_vcu.o build/profile_loader.o build/traction_control.o \
 build/win_profile_loader.o: profile_loader.c profile_loader.h | build
 	$(MINGW) $(CFLAGS) -c -o $@ profile_loader.c
 
-build/win_bfr_vcu.o: bfr_vcu.c $(COMMON_HDR) | build
-	$(MINGW) $(CFLAGS) $(VCU_INCS) -c -o $@ bfr_vcu.c
+build/win_bfr_vcu.o: bfr_vcu.c $(COMMON_HDR) VERSION | build
+	$(MINGW) $(CFLAGS) $(VERSION_DEFS) $(VCU_INCS) -c -o $@ bfr_vcu.c
 
 build/win_traction_control.o: $(VCU_DIR)/Core/Src/traction_control.c $(VCU_DIR)/Core/Inc/traction_control.h | build
 	$(MINGW) $(CFLAGS) $(VCU_INCS) -c -o $@ $(VCU_DIR)/Core/Src/traction_control.c
@@ -94,7 +97,8 @@ kit: build/bfr_vcu.exe
 	cp car/script.lua car/vcu_bridge.lua build/bfr_vcu_kit/data/
 	cp build/bfr_vcu.exe README.txt TEST_GUIDE.md build/bfr_vcu_kit/
 	cp $(VCU_DIR)/profiles/base.yaml profiles/main_220nm.yaml build/bfr_vcu_kit/
-	@echo "kit: sil/build/bfr_vcu_kit/"
+	printf "bfr_vcu v%s\nmk12-vcu: %s\n" "$(SIL_VERSION)" "$(VCU_REV)" > build/bfr_vcu_kit/VERSION.txt
+	@echo "kit: sil/build/bfr_vcu_kit/ (v$(SIL_VERSION), mk12-vcu $(VCU_REV))"
 
 pages:
 	python3 build_pages.py build/pages

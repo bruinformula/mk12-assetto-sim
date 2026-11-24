@@ -59,3 +59,4 @@ This kit includes two main-equivalent linear profiles (-30 Nm regen):
   bfr_vcu.exe --log path.csv         Write 100 Hz telemetry CSV to a specific path
   bfr_vcu.exe --no-log               Disable CSV logging
   bfr_vcu.exe --sleep                Low-CPU 1 ms poll mode (slight extra lag)
+  bfr_vcu.exe --version              Print kit version and embedded mk12-vcu SHA

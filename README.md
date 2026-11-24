@@ -126,7 +126,9 @@ git submodule update --remote vendor/mk12-vcu   # pull newer VCU firmware from a
 ```
 
 CI (`.github/workflows/sil.yml`) runs `make -C sil test`, cross-compiles `bfr_vcu.exe`, and
-uploads `bfr_vcu_kit` as a downloadable artifact.
+uploads `bfr_vcu_kit` as a downloadable artifact. Pushing a `v*` tag matching `sil/VERSION`
+triggers `.github/workflows/release.yml` to publish `bfr_vcu_kit-vX.Y.Z.zip` on GitHub Releases.
+In-game validation results live in [sil/RESULTS.md](sil/RESULTS.md).
 
 ## SIL spike (historical)
 

@@ -85,6 +85,13 @@ static SimProfile g_profile;
 #define TORQUE_TX_DIVIDER  10
 #define MAX_TICK_DT_S      0.1f
 
+#ifndef SIL_VERSION
+#define SIL_VERSION        "dev"
+#endif
+#ifndef VCU_FW_REV
+#define VCU_FW_REV         "unknown"
+#endif
+
 typedef enum {
   TC_MODE_SHADOW = 0, /* default: run Block_Diagram_1, log tc_nm/slip, do not cut torque */
   TC_MODE_ACTIVE = 1, /* --tc-active: apply Simulink TC torque cuts */
@@ -336,12 +343,14 @@ static int verify_reference_csv(const char *csv_path) {
 }
 
 static void print_usage(void) {
+  printf("bfr_vcu v%s (mk12-vcu %s)\n", SIL_VERSION, VCU_FW_REV);
   printf("Usage:\n");
   printf("  bfr_vcu [profile.yaml] [--profile PATH] [--tc-active | --tc-shadow | --no-tc]\n");
   printf("          [--log PATH | --no-log] [--sleep]\n");
   printf("  bfr_vcu --file PATH [--profile PATH] [--tc-active | --tc-shadow | --no-tc]\n");
   printf("          [--log PATH | --no-log] [--sleep] [--seconds N]\n");
   printf("  bfr_vcu --verify-reference CSV [--profile PATH]\n");
+  printf("  bfr_vcu --version\n");
 }
 
 static FILE *open_csv_log(const char *explicit_path, const char *profile_name,
@@ -430,6 +439,9 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
       print_usage();
+      return 0;
+    } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
+      printf("bfr_vcu v%s (mk12-vcu %s)\n", SIL_VERSION, VCU_FW_REV);
       return 0;
     } else if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
       profile_path = argv[++i];
@@ -537,7 +549,8 @@ int main(int argc, char **argv) {
     log_fp = open_csv_log(log_path, g_profile.name, resolved_log, sizeof resolved_log);
   }
 
-  printf("bfr_vcu: bridge %s v%u | %s\n",
+  printf("bfr_vcu v%s (fw %s) | bridge %s v%u | %s\n",
+         SIL_VERSION, VCU_FW_REV,
          BRIDGE_NAME, BRIDGE_VERSION, sleep_ms ? "1 ms sleep" : "spinning");
   printf("profile: %s (hash %08x) | max %.0f Nm | regen %s | TC %s\n",
          g_profile.name, g_profile.hash, g_profile.max_nm,

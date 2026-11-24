@@ -122,9 +122,19 @@ local function set_wheels(fl, fr, rl, rr)
   car.wheels[3].angularSpeed = rr
 end
 
--- 1. Layout size check
+-- 1. Layout size & --version output check
 check(ffi.sizeof("sil_block") == 104,
       "bridge v2 layout is 104 bytes, matching bridge_layout.h (26 x 4)")
+do
+  local vf = assert(io.open("VERSION", "r"))
+  local expected_ver = vf:read("*l"):gsub("%s+$", "")
+  vf:close()
+  local vp = assert(io.popen(string.format("%q --version", exe), "r"))
+  local ver_out = vp:read("*a") or ""
+  vp:close()
+  check(ver_out:find("bfr_vcu v" .. expected_ver, 1, true) ~= nil and ver_out:find("mk12%-vcu ") ~= nil,
+        "version banner: " .. ver_out:gsub("%s+$", ""))
+end
 
 -- 2. No VCU running: fail-closed 0 Nm in 1st gear, NaN release in neutral
 car.gas = 0.7
